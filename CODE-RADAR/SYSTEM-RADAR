@@ -1,0 +1,127 @@
+#include <Servo.h>
+
+// Broches du capteur ultrasons (HC-SR04)
+const int trigPin = 9;
+const int echoPin = 10;
+
+// Broche du Servomoteur
+const int servoPin = 11;
+
+// Broches des LEDs
+const int ledRed = 2;
+const int ledYellow = 3;
+const int ledBlue = 4;
+
+// Broche du Buzzer
+const int buzzerPin = 5;
+
+Servo myServo;
+
+long duration;
+int distance;
+
+// Variables pour le mouvement du servomoteur
+int currentAngle = 0;
+int step = 2;
+
+void setup() {
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  
+  pinMode(ledRed, OUTPUT);
+  pinMode(ledYellow, OUTPUT);
+  pinMode(ledBlue, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
+  
+  Serial.begin(9600);
+  myServo.attach(servoPin);
+  myServo.write(currentAngle);
+}
+
+void loop() {
+  // 1. Calcul de la distance en cm
+  distance = calculateDistance();
+  
+  // 2. Gestion des alertes (LEDs + Buzzer)
+  handleAlerts(distance);
+  
+  // 3. Affichage dans le Moniteur Série
+  Serial.print("Angle: ");
+  Serial.print(currentAngle);
+  Serial.print(" deg | Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  // 4. Logique de mouvement :
+  // Si la voie est libre (> 35 cm ou 0), le servomoteur avance
+  if (distance > 35 || distance == 0) {
+    currentAngle += step;
+    
+    // Inversion de sens aux extrémités (0° et 180°)
+    if (currentAngle >= 180 || currentAngle <= 0) {
+      step = -step;
+    }
+    
+    myServo.write(currentAngle);
+    delay(30);
+  } else {
+    // Si un obstacle est détecté, le servomoteur reste fixe sur la cible
+    delay(30);
+  }
+}
+
+// Fonction de calcul de la distance
+int calculateDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  duration = pulseIn(echoPin, HIGH);
+  int dist = duration * 0.034 / 2;
+  return dist;
+}
+
+// Gestion des alertes visuelles et sonores
+void handleAlerts(int dist) {
+  
+  // 1. ZONE DE DANGER (<= 8 cm)
+  if (dist > 0 && dist <= 8) {
+    digitalWrite(ledRed, HIGH);
+    digitalWrite(ledYellow, LOW);
+    digitalWrite(ledBlue, LOW);
+    
+    tone(buzzerPin, 1500); // Son continu aigu
+  } 
+  
+  // 2. ZONE MOYENNE (entre 8 cm et 35 cm)
+  else if (dist > 8 && dist <= 35) {
+    digitalWrite(ledRed, LOW);
+    digitalWrite(ledYellow, HIGH);
+    digitalWrite(ledBlue, LOW);
+    
+    int delayBip = map(dist, 8, 35, 30, 200);
+    
+    tone(buzzerPin, 800); // Son moyen
+    delay(25);
+    noTone(buzzerPin);
+    delay(delayBip);
+  } 
+  
+  // 3. ZONE ELOIGNEE OU VOIE LIBRE (> 35 cm)
+  else {
+    digitalWrite(ledRed, LOW);
+    digitalWrite(ledYellow, LOW);
+    digitalWrite(ledBlue, HIGH);
+    
+    // Bip très lent : un petit bip grave toutes les secondes
+    static unsigned long lastBipTime = 0;
+    if (millis() - lastBipTime > 1000) {
+      tone(buzzerPin, 400); 
+      delay(30);
+      noTone(buzzerPin);
+      lastBipTime = millis();
+    }
+  }
+}
